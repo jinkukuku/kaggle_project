@@ -66,32 +66,28 @@ holidays.rename
 holidays.rename(columns={"type":"holiday_type", "locale":"holiday_locale", "locale_name":"off_locale_name"}, inplace=True)
 holidays['is_holiday'] = True
 
-#Feriados normais de domingo
-# Domingo se torna o 7° dia da semana
+# 일요일은 휴일
 sundays_hol = data.date.dt.weekday == 6
 
 
-#hoilday não deve ser transferido para outra data, nem ser dia útil para que incluamos esta condição em todas as condições abaixo
-# condição = (holidays.holiday_type != "Work Day") & (holidays.transferred == False)
-#Também devemos remover linhas duplicadas que surgiram por pd.merge
-
+# 중복 행 제거
 holidays["date"] = pd.to_datetime(holidays["date"])
 
-# Feriados Nacionais
+# 국경
 feriados_nacionais = holidays[(holidays.holiday_type != "Work Day") & (holidays.transferred == False) & (holidays.holiday_locale == "National")]
 feriados_nacionais = data.merge(feriados_nacionais[["date", "is_holiday"]], how="left", on="date")
 feriados_nacionais = feriados_nacionais[feriados_nacionais.id<len(data)].drop_duplicates(subset=['id'])
 feriados_nacionais['is_holiday'] = feriados_nacionais['is_holiday'].fillna(False)
 
 
-#Feriados Locais (cidade)
+#지역 공휴일 (도시)
 feriados_cidade = holidays[(holidays.holiday_type != "Work Day") & (holidays.transferred == False) & (holidays.holiday_locale == "Local")]
 feriados_cidade = data.merge(feriados_cidade.rename(columns={"off_locale_name":"city"})[["date", "is_holiday", "city"]], how="left", on=["date", "city"])
 feriados_cidade = feriados_cidade[feriados_cidade.id<len(data)].drop_duplicates(subset=['id'])
 feriados_cidade['is_holiday'] = feriados_cidade['is_holiday'].fillna(False)
 
 
-#Feriados Regionais (Estado)
+#지역 공휴일 (주)
 feriados_estaduais = holidays[(holidays.holiday_type != "Work Day") & (holidays.transferred == False) & (holidays.holiday_locale == "Local")]
 feriados_estaduais = data.merge(feriados_estaduais.rename(columns={"off_locale_name":"state"})[["date", "is_holiday", "state"]], how="left", on=["date", "state"])
 feriados_estaduais = feriados_estaduais[feriados_estaduais.id<len(data)].drop_duplicates(subset=['id'])
@@ -102,13 +98,11 @@ todos_feriados = sundays_hol.values | feriados_nacionais['is_holiday'].values  |
 data['is_holiday'] = todos_feriados.astype("bool")
 
 
-#Calculando média de vendas diárias
 venda_media = data.groupby('date').sales.mean().reset_index()
 venda_media = venda_media.set_index("date").resample("D").sum().reset_index()
 venda_media["sales"] = np.where(venda_media["sales"] == 0, np.nan, venda_media["sales"])
 venda_media["sales"] = venda_media["sales"].interpolate()
 
-#Calculando média móvel
 venda_media = data.groupby('date').sales.mean().reset_index()
 venda_media = venda_media.set_index("date").resample("D").sum().reset_index()
 venda_media["sales"] = np.where(venda_media["sales"] == 0, np.nan, venda_media["sales"])
@@ -121,7 +115,7 @@ venda_media_movel = venda_media.sales.rolling(window=window_size, center = True)
 venda_media_movel.plot()
 plt.title('Moving Average plot')
 
-# Treinando o modelo
+# 트렌드 모델 학습
 trend_model = LinearRegression()
 date_range = np.array(range(len(venda_media_movel))).reshape(-1, 1)[window_size:-window_size]
 venda_media_movel = venda_media_movel[window_size:-window_size]
@@ -139,20 +133,18 @@ predicted = trend_model.predict(time_arange.reshape(-1, 1))
 trend_df = pd.DataFrame({"date":list(time_range), "trend":list(predicted)})
 data = data.merge(trend_df, how='left', on='date')
 
-# Calculando FFT
+# Calculando FFT (Calculating FFT)
 y = detrended
 fft_result = np.fft.fft(y)
 
-# Frequência
+# Frequency
 sampling_frequency = 1   # A frequência de amostragem é diária
 freq = np.fft.fftfreq(len(y), d=1/sampling_frequency)
 
-# Convertendo frequência
 positive_freq_mask = freq > 0
 time = 1/(freq+1e-6)[positive_freq_mask]
 amplitudes = np.abs(fft_result)[positive_freq_mask]
 
-#Incluindo apenas 1 ano de intervalo
 time_mask = time < 370
 time = time[time_mask]
 amplitudes = amplitudes[time_mask]
@@ -171,14 +163,14 @@ time_mask = time < 32
 time = time[time_mask]
 amplitudes = amplitudes[time_mask]
 
-# Plot FFT
-plt.figure(figsize=(15, 5))
-plt.plot(time, amplitudes)
-plt.xlabel(' (Frequency (Hz)')
-plt.ylabel('Amplitude')
-plt.title('FFT dos dados de Série Temporal')
-plt.grid(True)
-plt.show()
+# # Plot FFT
+# plt.figure(figsize=(15, 5))
+# plt.plot(time, amplitudes)
+# plt.xlabel(' (Frequency (Hz)')
+# plt.ylabel('Amplitude')
+# plt.title('Time series data FFT')
+# plt.grid(True)
+# plt.show()
 
 temp = data.copy()
 temp['day'] = train.date.dt.day
@@ -194,7 +186,7 @@ b = data.date.dt.month.isin([4, 6, 9, 11]) & data.date.dt.day == 30
 c = data.date.dt.month.isin([2]) & data.date.dt.day == 29
 data['iswageday'] = a | b | c
 
-#o dia seguinte ao dia do salário
+
 a = (data.date.dt.day == 16) | (data.date.dt.day == 1)
 data['day_after_wageday'] = a
 
@@ -212,7 +204,7 @@ data['season'] = np.where(data.date.dt.month.isin([9,10,11]), 3, data['season'])
 date_features = ['year', 'season', 'month', 'dayofmonth', 'dayofyear', 'dayofweek', 'weekofmonth']
 data[date_features] = data[date_features].astype("int")
 
-# Convertendo Onpromotion como coluna booleana aos dados
+
 data['is_onpromotion'] = data['onpromotion'] > 0
 
 fourier = CalendarFourier(freq="A", order=500)
@@ -304,11 +296,11 @@ final_data = final_data[final_data.train == 1]
 #Eliminando a coluna de vendas e definindo como y
 final_data = final_data.drop(columns=['sales'], axis=1)
 
-#Features categóricas
+
 categorical_features = ['family', 'dayofweek','month','year','weekofmonth','season',
                         'city','state','store_type','store_cluster']
 
-# One-hot encode para as colunas de features categóricas
+
 final_data = pd.get_dummies(final_data, columns=categorical_features)
 
 label_encoder = LabelEncoder()
@@ -320,10 +312,10 @@ data_train, data_test, y_train, y_test = train_test_split(final_data, y, test_si
 
 params = {'objective':'reg:squarederror',  'eval_metric':'rmse'}
 
-# Convertendo dados de treino para DMatrix
+
 dtrain = xgb.DMatrix(data_train, label=y_train)
 
-# Treinando o modelo dataGBoost
+
 num_rounds = 100  
 bst = xgb.train(params, dtrain, num_rounds)
 
@@ -337,13 +329,13 @@ def rmsle(y_true, y_pred):
     rmsle = np.sqrt(mean_squared_log_error)
     return rmsle
 
-# Convertendo dados de teste para DMatrix
+
 dtest = xgb.DMatrix(data_test)
 
-# Predição nos dados de teste
+
 predictions = bst.predict(dtest)
 
-# Avalia performance do modelo
+
 from sklearn.metrics import mean_squared_error
 
 y_test_trended = y_test
@@ -367,7 +359,7 @@ test_data[list(set(train_columns)-set(test_columns))] = False
 train_columns = final_data.columns
 test_data_reordered = test_data[train_columns]
 
-# Convertendo dados de teste para DMatrix
+
 dtest = xgb.DMatrix(test_data_reordered)
 predictions = bst.predict(dtest)
 # Não deve haver valores negativos. substituímos os negativos por zero porque provavelmente não mostram vendas
